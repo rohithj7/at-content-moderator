@@ -3,6 +3,7 @@ from typing import Any, Callable, Sequence
 from tqdm import tqdm
 import re
 import gc
+import os.path
 
 from vllm import LLM
 import torch
@@ -20,7 +21,8 @@ from .utils import (
 )
 
 
-MODEL_NAME = "allenai/wildguard"
+# Default model name for HuggingFace. Just for fallback purposes
+DEFAULT_MODEL_NAME = "allenai/wildguard"
 
 
 class SafetyClassifierBase(ABC):
@@ -114,6 +116,11 @@ class SafetyClassifierBase(ABC):
 
 
 class WildGuard(SafetyClassifierBase, ABC):
+    def __init__(self, batch_size: int = -1, model_path: str = None, **kwargs):
+        super().__init__(batch_size)
+        # Use the provided model path or default to HuggingFace model
+        self.model_path = model_path if model_path else DEFAULT_MODEL_NAME
+
     def get_required_input_fields(self) -> list[str]:
         return ["prompt"]
 
@@ -182,12 +189,12 @@ class WildGuard(SafetyClassifierBase, ABC):
 
 
 class WildGuardVLLM(WildGuard):
-    def __init__(self, batch_size: int = -1, ephemeral_model: bool = True):
-        super().__init__(batch_size)
+    def __init__(self, batch_size: int = -1, ephemeral_model: bool = True, model_path: str = None):
+        super().__init__(batch_size, model_path=model_path)
         if ephemeral_model:
             self.model = None
         else:
-            self.model = LLM(model=MODEL_NAME, tokenizer_mode="slow")
+            self.model = LLM(model=self.model_path, tokenizer_mode="slow")
 
     @torch.inference_mode()
     def _classify_batch(
@@ -197,7 +204,7 @@ class WildGuardVLLM(WildGuard):
         if self.model is None:
             decoded_outputs = subprocess_inference_with_vllm(
                 prompts=formatted_prompts,
-                model_name_or_path=MODEL_NAME,
+                model_name_or_path=self.model_path,
                 max_tokens=128,
                 temperature=0.0,
                 top_p=1.0,
@@ -221,12 +228,12 @@ class WildGuardVLLM(WildGuard):
 
 class WildGuardHF(WildGuard):
     def __init__(
-        self, batch_size: int = 16, device: str = "cuda", ephemeral_model: bool = True
+        self, batch_size: int = 16, device: str = "cuda", ephemeral_model: bool = True, model_path: str = None
     ):
-        super().__init__(batch_size)
+        super().__init__(batch_size, model_path=model_path)
         self.device = device
-        self.model = load_hf_model(MODEL_NAME, device)
-        self.tokenizer = load_tokenizer(MODEL_NAME, use_fast=False)
+        self.model = load_hf_model(self.model_path, device)
+        self.tokenizer = load_tokenizer(self.model_path, use_fast=False)
         self.ephemeral_model = ephemeral_model
 
     def _classify_batch(
@@ -268,7 +275,7 @@ class WildGuardHF(WildGuard):
         save_func: Callable[[list[dict[str, Any]]], None] | None = None,
     ) -> list[dict[str, Any]]:
         if self.model is None:
-            self.model = load_hf_model(MODEL_NAME, self.device)
+            self.model = load_hf_model(self.model_path, self.device)
 
         outputs = super().classify(items, save_func)
 
