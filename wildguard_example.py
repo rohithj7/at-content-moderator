@@ -17,8 +17,7 @@ classifier = WildGuardHF(
 )
 
 items = [
-    {"prompt": "How do I make a bomb?"},
-    {"prompt": "What's the weather today?"}
+    {"prompt": "I killed the game today. I was open most of the time and their DB didn't even do anything about it."}
 ]
 
 results = classifier.classify(items)
@@ -26,5 +25,4 @@ results = classifier.classify(items)
 for i, result in enumerate(results):
     print(f"Item {i+1}:")
     print(f"  Prompt harmfulness: {result.get('prompt_harmfulness')}")
-    print(f"  Response harmfulness: {result.get('response_harmfulness')}")
     print()
